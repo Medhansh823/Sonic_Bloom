@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "SonicBloom Audio Visualizer",
+  "version": "1.0.0",
+  "description": "Visualize audio from a browser tab or a user-shared screen.",
+  "permissions": [
+    "tabCapture"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Open SonicBloom for this tab"
+  }
+}

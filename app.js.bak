@@ -1,0 +1,311 @@
+﻿/* SonicBloom starter app
+   Core implementation: loading audio, playback, analyser setup, spectrum bars,
+   waveform rendering, progress, and visual controls.
+
+   Your Crescent extension tasks are listed in README.md. Build those yourself
+   and keep notes about what you changed and why.
+*/
+const audio = document.querySelector('#audio');
+const fileInput = document.querySelector('#audio-file');
+const playButton = document.querySelector('#play-button');
+const playIcon = document.querySelector('#play-icon');
+const canvas = document.querySelector('#visualizer');
+const ctx = canvas.getContext('2d');
+const hint = document.querySelector('#canvas-hint');
+const trackTitle = document.querySelector('#track-title');
+const playerTrackName = document.querySelector('#player-track-name');
+const playerSubtitle = document.querySelector('#player-subtitle');
+const statusChip = document.querySelector('#status-chip');
+const progressFill = document.querySelector('#progress-fill');
+const currentTimeLabel = document.querySelector('#current-time');
+const durationLabel = document.querySelector('#duration');
+const sensitivityInput = document.querySelector('#sensitivity');
+const glowInput = document.querySelector('#glow');
+const sensitivityValue = document.querySelector('#sensitivity-value');
+const glowValue = document.querySelector('#glow-value');
+const modeButtons = [...document.querySelectorAll('.mode-button')];
+const resetButton = document.querySelector('#reset-button');
+
+let audioContext = null;
+let analyser = null;
+let sourceNode = null;
+let frequencyData = null;
+let waveformData = null;
+let currentMode = 'bars';
+let sensitivity = 0.65;
+let glow = 0.70;
+let objectUrl = null;
+let animationFrame = 0;
+let lastBass = 0;
+
+const palette = ['#b69aff', '#e78cfa', '#fb83c7', '#8be7ef'];
+
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return `${mins}:${secs}`;
+}
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.max(1, Math.floor(rect.width * pixelRatio));
+  canvas.height = Math.max(1, Math.floor(rect.height * pixelRatio));
+  // Draw in CSS pixels so our visual maths stays easy to understand.
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+}
+
+function prepareAudioGraph() {
+  if (audioContext) return;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    statusChip.textContent = 'UNSUPPORTED';
+    playerSubtitle.textContent = 'Try a recent version of Chrome, Edge, or Firefox.';
+    return;
+  }
+  audioContext = new AudioContextClass();
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.82;
+  sourceNode = audioContext.createMediaElementSource(audio);
+  sourceNode.connect(analyser);
+  analyser.connect(audioContext.destination);
+  frequencyData = new Uint8Array(analyser.frequencyBinCount);
+  waveformData = new Uint8Array(analyser.fftSize);
+}
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = URL.createObjectURL(file);
+  audio.src = objectUrl;
+  audio.load();
+  const name = file.name.replace(/\.[^/.]+$/, '');
+  trackTitle.textContent = name;
+  playerTrackName.textContent = name;
+  playerSubtitle.textContent = `${(file.size / (1024 * 1024)).toFixed(1)} MB Â· Local file`;
+  playButton.disabled = false;
+  hint.classList.remove('hidden');
+  statusChip.textContent = 'LOADED';
+  progressFill.style.width = '0%';
+  currentTimeLabel.textContent = '0:00';
+  durationLabel.textContent = '0:00';
+  drawIdleState();
+});
+
+playButton.addEventListener('click', async () => {
+  if (!audio.src) return;
+  prepareAudioGraph();
+  if (!audioContext || !analyser) return;
+  try {
+    if (audioContext.state === 'suspended') await audioContext.resume();
+    if (audio.paused) {
+      await audio.play();
+    } else {
+      audio.pause();
+    }
+  } catch (error) {
+    statusChip.textContent = 'PLAYBACK ERROR';
+    playerSubtitle.textContent = 'This audio format may not be supported by your browser.';
+    console.error('Could not play selected audio:', error);
+  }
+});
+
+audio.addEventListener('play', () => {
+  playIcon.textContent = 'â…¡';
+  playButton.setAttribute('aria-label', 'Pause');
+  statusChip.textContent = 'PLAYING';
+  hint.classList.add('hidden');
+  startAnimation();
+});
+audio.addEventListener('pause', () => {
+  playIcon.textContent = 'â–¶';
+  playButton.setAttribute('aria-label', 'Play');
+  if (!audio.ended && audio.src) statusChip.textContent = 'PAUSED';
+});
+audio.addEventListener('ended', () => {
+  statusChip.textContent = 'FINISHED';
+  playIcon.textContent = 'â–¶';
+  playButton.setAttribute('aria-label', 'Play');
+});
+audio.addEventListener('loadedmetadata', () => {
+  durationLabel.textContent = formatTime(audio.duration);
+});
+audio.addEventListener('timeupdate', () => {
+  currentTimeLabel.textContent = formatTime(audio.currentTime);
+  if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    progressFill.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+  }
+});
+
+modeButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    currentMode = button.dataset.mode;
+    modeButtons.forEach(item => item.classList.toggle('active', item === button));
+  });
+});
+
+sensitivityInput.addEventListener('input', () => {
+  sensitivity = Number(sensitivityInput.value) / 100;
+  sensitivityValue.value = `${sensitivityInput.value}%`;
+  sensitivityValue.textContent = `${sensitivityInput.value}%`;
+});
+glowInput.addEventListener('input', () => {
+  glow = Number(glowInput.value) / 100;
+  glowValue.value = `${glowInput.value}%`;
+  glowValue.textContent = `${glowInput.value}%`;
+});
+resetButton.addEventListener('click', () => {
+  sensitivityInput.value = '65';
+  glowInput.value = '70';
+  sensitivity = 0.65;
+  glow = 0.70;
+  sensitivityValue.textContent = '65%';
+  glowValue.textContent = '70%';
+  currentMode = 'bars';
+  modeButtons.forEach(button => button.classList.toggle('active', button.dataset.mode === 'bars'));
+});
+
+function clearCanvas() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  ctx.clearRect(0, 0, width, height);
+  return { width, height };
+}
+
+function drawIdleState() {
+  const { width, height } = clearCanvas();
+  const middle = height / 2;
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = '#9b83e8';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, middle);
+  ctx.lineTo(width, middle);
+  ctx.stroke();
+  for (let i = 0; i < 48; i++) {
+    const x = (i / 48) * width + 2;
+    const h = 3 + (Math.sin(i * 0.7) + 1) * 5;
+    ctx.fillStyle = palette[i % palette.length];
+    ctx.fillRect(x, middle - h / 2, Math.max(2, width / 170), h);
+  }
+  ctx.restore();
+}
+
+function drawSpectrum(width, height) {
+  analyser.getByteFrequencyData(frequencyData);
+  const count = Math.min(96, Math.floor(width / 5));
+  const gap = 3;
+  const barWidth = Math.max(1, (width - gap * (count - 1)) / count);
+  const centerY = height * 0.53;
+  const maxHeight = height * 0.42;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < count; i++) {
+    // Spread bins across the spectrum, giving bass frequencies more visual room.
+    const t = i / count;
+    const bin = Math.min(frequencyData.length - 1, Math.floor(Math.pow(t, 1.75) * frequencyData.length));
+    const raw = frequencyData[bin] / 255;
+    const level = Math.min(1, Math.pow(raw * (0.65 + sensitivity), 0.85));
+    const barHeight = Math.max(2, level * maxHeight);
+    const x = i * (barWidth + gap);
+    const color = palette[Math.floor((i / count) * (palette.length - 1))];
+    ctx.shadowBlur = 18 * glow;
+    ctx.shadowColor = color;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.55 + level * 0.45;
+    roundedRect(ctx, x, centerY - barHeight, barWidth, barHeight, Math.min(4, barWidth / 2));
+    ctx.globalAlpha *= 0.48;
+    roundedRect(ctx, x, centerY + 5, barWidth, barHeight * 0.42, Math.min(4, barWidth / 2));
+  }
+  ctx.restore();
+  drawBassPulse(width, height);
+}
+
+function drawWaveform(width, height) {
+  analyser.getByteTimeDomainData(waveformData);
+  const mid = height / 2;
+  const slice = width / waveformData.length;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineWidth = 2;
+  ctx.shadowBlur = 18 * glow;
+  ctx.shadowColor = '#b69aff';
+  const gradient = ctx.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, '#b69aff');
+  gradient.addColorStop(0.55, '#fb83c7');
+  gradient.addColorStop(1, '#8be7ef');
+  ctx.strokeStyle = gradient;
+  ctx.beginPath();
+  for (let i = 0; i < waveformData.length; i++) {
+    const x = i * slice;
+    const displacement = ((waveformData[i] - 128) / 128) * (height * 0.38) * (0.6 + sensitivity);
+    const y = mid + displacement;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // A quiet centre line helps make the movement readable.
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = '#b6a9e8';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(width, mid); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBassPulse(width, height) {
+  // Small bass-energy halo: this is derived from the lowest analyser bins.
+  let total = 0;
+  const bins = Math.min(12, frequencyData.length);
+  for (let i = 0; i < bins; i++) total += frequencyData[i] / 255;
+  const bass = total / bins;
+  lastBass += (bass - lastBass) * 0.12;
+  const radius = 24 + lastBass * 78 * (0.5 + sensitivity);
+  const halo = ctx.createRadialGradient(width / 2, height * 0.53, 2, width / 2, height * 0.53, radius);
+  halo.addColorStop(0, `rgba(191, 146, 255, ${0.04 + lastBass * 0.12})`);
+  halo.addColorStop(1, 'rgba(191, 146, 255, 0)');
+  ctx.save();
+  ctx.fillStyle = halo;
+  ctx.fillRect(width / 2 - radius, height * 0.53 - radius, radius * 2, radius * 2);
+  ctx.restore();
+}
+
+function roundedRect(context, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + width, y, x + width, y + height, r);
+  context.arcTo(x + width, y + height, x, y + height, r);
+  context.arcTo(x, y + height, x, y, r);
+  context.arcTo(x, y, x + width, y, r);
+  context.closePath();
+  context.fill();
+}
+
+function renderFrame() {
+  animationFrame = 0;
+  const { width, height } = clearCanvas();
+  if (!analyser || !frequencyData || audio.paused) {
+    drawIdleState();
+    return;
+  }
+  if (currentMode === 'wave') drawWaveform(width, height);
+  else if (currentMode === 'circles') drawCircles(width, height);
+  else drawSpectrum(width, height);
+  animationFrame = requestAnimationFrame(renderFrame);
+}
+
+function startAnimation() {
+  if (!animationFrame) animationFrame = requestAnimationFrame(renderFrame);
+}
+
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  if (audio.paused) drawIdleState();
+});
+
+resizeCanvas();
+drawIdleState();

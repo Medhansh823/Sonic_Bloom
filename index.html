@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#090914" />
+  <title>SonicBloom — Music Visualizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <main class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="SonicBloom home"><span class="brand-mark">✳</span>
+        Sonic<span>Bloom</span></a>
+      <div class="live-pill"><span class="live-dot"></span> AUDIO REACTIVE</div>
+    </header>
+
+    <section class="intro">
+      <p class="eyebrow">YOUR SOUND, IN COLOUR</p>
+      <h1>See what your<br /><span>music feels like.</span></h1>
+      <p class="intro-copy">Play a track here, or open the extension to visualize audio from another tab or shared screen.</p>
+    </section>
+
+    <section class="visualizer-card" aria-label="Music visualizer">
+      <div class="visualizer-heading">
+        <div><span class="tiny-label">NOW VISUALIZING</span>
+          <h2 id="track-title">Waiting for your track</h2>
+        </div>
+        <span class="status-chip" id="status-chip">READY</span>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="visualizer" aria-label="Audio frequency visualizer"></canvas>
+        <div class="canvas-hint" id="canvas-hint"><span class="hint-icon">♫</span><span>Choose a track
+            below<br /><small>Your visuals will appear here</small></span></div>
+        <button class="fullscreen-button" id="fullscreen-button" type="button" aria-label="Enter fullscreen" title="Enter fullscreen">⛶</button>
+      </div>
+      <div class="track-progress"><span id="current-time">0:00</span>
+        <div class="progress-rail">
+          <div id="progress-fill"></div>
+        </div><span id="duration">0:00</span>
+      </div>
+      <div class="player-row">
+        <button id="play-button" class="play-button" aria-label="Play" disabled><span id="play-icon">▶</span></button>
+        <div class="track-meta"><strong id="player-track-name">No track selected</strong><span id="player-subtitle">MP3,
+            WAV, OGG, or other browser-supported audio</span></div>
+        <label class="upload-button" for="audio-file"><span>＋</span> Choose track</label>
+        <input id="audio-file" type="file" accept="audio/*" hidden />
+      </div>
+      <audio id="audio" preload="metadata"></audio>
+      <div class="extension-capture" id="extension-capture" hidden>
+        <span class="setting-label">CAPTURE AUDIO PLAYING ELSEWHERE</span>
+        <div class="capture-actions">
+          <button class="capture-button" id="capture-tab-button" type="button">Capture this tab</button>
+          <button class="capture-button" id="capture-desktop-button" type="button">Share screen audio</button>
+          <button class="capture-button stop-capture-button" id="stop-capture-button" type="button" hidden>Stop capture</button>
+        </div>
+        <p class="setting-help" id="capture-help" aria-live="polite">Tab audio stays in your browser. Screen audio requires choosing a screen or window and enabling audio in the browser prompt.</p>
+      </div>
+    </section>
+
+    <section class="controls-section">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">MAKE IT YOURS</p>
+          <h2>Visual settings</h2>
+        </div><button id="reset-button" class="text-button">Reset</button>
+      </div>
+      <div class="settings-grid">
+        <div class="setting-card mic-card"><span class="setting-label">AUDIO INPUT</span>
+          <button id="mic-button" class="mode-button" aria-label="Toggle microphone" aria-pressed="false"><span
+              class="hint-icon">🎤</span></button>
+          <span class="status-chip" id="mic-status">MIC</span>
+        </div>
+        <div class="setting-card mode-card"><span class="setting-label">VISUAL MODE</span>
+          <div class="mode-switch" role="group" aria-label="Visual mode"><button class="mode-button active" aria-pressed="true"
+              data-mode="bars">Spectrum</button><button class="mode-button" aria-pressed="false" data-mode="wave">Waveform</button><button
+              class="mode-button" aria-pressed="false" data-mode="circles">Circles</button><button class="mode-button"
+              aria-pressed="false" data-mode="particles">Particles</button><button class="mode-button" aria-pressed="false"
+              data-mode="aurora">Aurora</button>
+          </div>
+          <p class="setting-help">Switch between spectrum, waveform, and motion-driven visual styles.</p>
+        </div>
+        <div class="setting-card">
+          <div class="setting-top"><label class="setting-label" for="sensitivity">SENSITIVITY</label><output
+              id="sensitivity-value">65%</output></div><input id="sensitivity" type="range" min="20" max="100"
+            value="65" />
+          <p class="setting-help">How strongly the visuals react to sound.</p>
+        </div>
+        <div class="setting-card">
+          <div class="setting-top"><label class="setting-label" for="glow">GLOW</label><output
+              id="glow-value">70%</output></div><input id="glow" type="range" min="0" max="100" value="70" />
+          <p class="setting-help">Adjust the glow around the visualizer.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer><span class="footer-mark">✳</span><span>Made for curious ears.</span><span class="footer-right">SONICBLOOM ·
+        WEB AUDIO EXPERIMENT</span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+
+</html>
